@@ -27,7 +27,7 @@ soup = BeautifulSoup(html, 'lxml')
 
 
 def has_class(el, classes):
-    if 'class' not in tr.attrs:
+    if 'class' not in el.attrs:
         return False
     if isinstance(classes, str):
         classes = (classes, )
