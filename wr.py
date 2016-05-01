@@ -25,29 +25,73 @@ html = r.text
 
 soup = BeautifulSoup(html, 'lxml')
 
+
+def has_class(el, classes):
+    if 'class' not in tr.attrs:
+        return False
+    if isinstance(classes, str):
+        classes = (classes, )
+    if set(el.attrs['class']).isdisjoint(set(classes)):
+        return False
+    return True
+
+
+def get_first_class(el, default=''):
+    if 'class' not in el.attrs:
+        return default
+    return el.attrs['class'][0]
+
+
+def get_definition_lines(el):
+    lines = []
+    words = [];
+    for child in el.children:
+        tag_name = child.name
+        if not tag_name:  # it's a string node
+            s = child.strip()
+            if s and s != ';':
+                words.append(s)
+        elif tag_name != 'br':
+            if has_class(child, ('i', 'ic')) and len(child.string) <= 3:
+                continue
+            words.append(' '.join(child.stripped_strings))
+        else:  # br => start new line
+            line = ' '.join(w for w in words if w)
+            if line:
+                lines.append(line)
+            words = []
+    if words:
+        line = ' '.join(w for w in words if w)
+        if line:
+            lines.append(line)
+    return lines
+
+
+# try first format (table.WRD)
 results = []
 result = {}
+
 for tr in soup.select('table.WRD tr'):
-    if 'class' not in tr.attrs or set(tr.attrs['class']).isdisjoint(set(['even', 'odd'])): continue
+    if not has_class(tr, ('even', 'odd')): continue
     for td in tr.select('td'):
-        if 'class' in td.attrs:
-            if td.attrs['class'][0] == 'FrWrd':
-                if result:
-                    results.append(result)
-                    result = {}
-                result['word'] = ' '.join(td.strong.stripped_strings)
-                result['trans'] = []
-            elif td.attrs['class'][0] == 'ToWrd':
-                s = list(td.strings)
-                result['trans'].append(s[0])
-        else:
-            if td.string:
-                s = str(td.string).strip()
-                if s.startswith('('):
-                    result['syn'] = s
+        c = get_first_class(td)
+        if c == 'FrWrd':
+            if result:
+                results.append(result)
+                result = {}
+            result['word'] = ' '.join(td.strong.stripped_strings)
+            result['trans'] = []
+        elif c == 'ToWrd':
+            s = list(td.strings)
+            result['trans'].append(s[0])
+        elif td.string:
+            s = str(td.string).strip()
+            if s.startswith('('):
+                result['syn'] = s
 if result:
     results.append(result)
 
+# print first format
 for result in results:
     header = result['word']
     if 'syn' in result:
@@ -56,3 +100,38 @@ for result in results:
     print(header)
     for trans in result['trans']:
         print("    %s" % trans)
+
+
+if results:
+    quit()
+
+
+# second format (.trans)
+results = []
+
+# sometimes it is a table
+for tr in soup.select('table.trans tr'):
+    result = []
+    for td in tr.select('td'):
+        if get_first_class(td) == 'nums1':
+            continue
+        lines = get_definition_lines(td)
+        if lines:
+            result.extend(lines)
+    if result:
+        results.append(result)
+
+# sometimes it's a div
+if not results:
+    for div in soup.select('#article .trans'):
+        result = get_definition_lines(div)
+        if result:
+            results.append(result)
+
+# print second format
+for i, result in enumerate(results):
+    for j, line in enumerate(result):
+        if j == 0:
+            print("%i. %s" % (j + 1, line))
+        else:
+            print("    %s" % line)
